@@ -1,0 +1,10 @@
+venv
+.venv
+docs
+db
+deploy
+__pycache__
+**/__pycache__
+**/.env*
+**/*.log
+.git

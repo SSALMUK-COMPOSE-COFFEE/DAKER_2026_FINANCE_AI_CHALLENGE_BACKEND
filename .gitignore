@@ -1,0 +1,47 @@
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# test / type / lint
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ml / data
+*.pt
+*.pth
+*.ckpt
+*.pkl
+*.joblib
+models/
+data/raw/
+data/processed/
+docs/
+
+# ide / os
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+logs/
