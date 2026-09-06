@@ -33,16 +33,17 @@ async def rewrite_document(req: DocumentRewriteRequest) -> DocumentRewriteRespon
 
 @router.post("/export")
 def export(req: DocumentExportRequest) -> Response:
+    applicant = req.applicant.model_copy(update={"name": req.applicant.name or req.applicant_name})
     pdf = build_pdf(
         {
             "application": req.application,
             "incident": req.incident,
             "evidence_index": req.evidence_index,
         },
-        req.applicant_name,
+        applicant,
     )
     stamp = datetime.now().strftime("%Y%m%d")
-    name = f"소명서_{req.applicant_name or '신청인'}_{stamp}.pdf"
+    name = f"소명서_{applicant.name or '신청인'}_{stamp}.pdf"
     return Response(
         content=pdf,
         media_type="application/pdf",

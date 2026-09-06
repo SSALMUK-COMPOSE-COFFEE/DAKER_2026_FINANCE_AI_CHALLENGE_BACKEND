@@ -210,6 +210,7 @@ class DocumentExportRequest(BaseModel):
     application: str
     incident: str
     evidence_index: str
+    applicant: Applicant = Field(default_factory=Applicant)
     applicant_name: str = ""
 
 

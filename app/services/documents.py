@@ -15,8 +15,6 @@ from app.services.evidence import DELIVERY_LABELS, build_checklist
 from app.services.llm import LLMUnavailable, complete, complete_json, configured, user_block
 from app.services.reference import citation_by_key
 
-RULE = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
 PURPOSE_SENTENCE = {
     "실물중고": "중고거래 플랫폼에서 실물 중고물품을 판매하고 받은 대금",
     "상품권": "상품권·기프티콘을 판매하고 받은 대금",
@@ -73,10 +71,6 @@ def _date_ko(value: str) -> str:
     except ValueError:
         return value or "[날짜]"
     return f"{d.year}년 {d.month}월 {d.day}일"
-
-
-def _blank(value: str, width: int = 0) -> str:
-    return value if value else "[ ]"
 
 
 def checked_items(answers: Answers, checked: list[str]) -> list[EvidenceItem]:
@@ -156,7 +150,6 @@ def fill_templates(req: DocumentDraftRequest) -> DocumentDraftResponse:
     account = ap.account_no or "[계좌번호]"
     name = ap.name or "[신청인]"
     freeze = _date_ko(_s(a, "q9")) if _s(a, "q9") else "[정지 통보일]"
-    today = datetime.now()
 
     ref_tx = _evidence_ref(items, "txhistory")
     ref_chat = _evidence_ref(items, "chat")
@@ -198,40 +191,7 @@ def fill_templates(req: DocumentDraftRequest) -> DocumentDraftResponse:
             "있다는 판례[대법원 2024다216187]의 취지에 비추어도 신청인의 수령은 정당합니다."
         )
 
-    application = f"""■ 전기통신금융사기 피해 방지 및 피해금 환급에 관한 특별법 시행령 [별지 제4호서식]
-
-                         이 의 제 기 신 청 서
-
-접수번호 :                                   접수일자 :
-                     (※ 위 칸은 접수 기관이 작성합니다)
-
-{RULE}
-
-■ 신청인
-
-  성      명   {_blank(ap.name)}                     생년월일   {_blank(ap.birth)}
-
-  주      소   {_blank(ap.address)}
-
-  전 화 번 호   {_blank(ap.phone)}                    휴대전화번호   {_blank(ap.phone)}
-
-  전자우편주소  {_blank(ap.email)}
-
-■ 지급정지계좌
-
-  금 융 회 사   {bank}                   개설점포   {_blank(ap.branch)}
-
-  예 금 종 별   {ap.account_type}
-
-  계 좌 번 호   {account}
-
-  명    의    인   {name}
-
-{RULE}
-
-■ 이의제기 사유 (구체적으로 기재합니다)
-
-1. 입금 금액과 시간
+    application = f"""1. 입금 금액과 시간
 
 {when}, 본인 명의 {bank} 계좌({account})로 {amount}이 입금되었습니다{ref_tx}{ref_notif}. 이 금액은 {PURPOSE_SENTENCE.get(q3, '정상적인 경위로 입금된 금액')}입니다.
 
@@ -245,14 +205,7 @@ def fill_templates(req: DocumentDraftRequest) -> DocumentDraftResponse:
 
 이상과 같이 신청인은 위 금액을 정당한 권원에 의하여 취득하였으므로 지급정지의 해제를 요청드립니다. 객관적 자료로 충분히 소명되는 경우 2개월을 기다리지 않고 해제할 수 있다는 규정[법 제8조②2호 단서]에 따라 신속한 검토를 부탁드립니다.
 
-{RULE}
-
-위 내용이 모두 사실임을 확인하며, 허위 사실 기재 시 3년 이하의 징역
-또는 3천만원 이하의 벌금(법 제16조)에 처해질 수 있음을 알고 있습니다.
-
-                             {today.year}년   {today.month}월   {today.day}일
-
-                                      신청인      {name}   (서명 또는 인)"""
+위 내용이 모두 사실임을 확인하며, 허위 사실 기재 시 3년 이하의 징역 또는 3천만원 이하의 벌금(법 제16조)에 처해질 수 있음을 알고 있습니다."""
 
     span_sentence = "계좌를 정상적으로 이용해 온 명의인으로"
     if analysis and analysis.metrics.account_span_days:
