@@ -14,6 +14,7 @@ from app.schemas import (
 from app.services.evidence import DELIVERY_LABELS, build_checklist
 from app.services.llm import LLMUnavailable, complete, complete_json, configured, user_block
 from app.services.reference import citation_by_key
+from app.services.riskgate import blocked_reason, guidance_text
 
 PURPOSE_SENTENCE = {
     "실물중고": "중고거래 플랫폼에서 실물 중고물품을 판매하고 받은 대금",
@@ -323,6 +324,18 @@ async def _generate(req: DocumentDraftRequest, base: DocumentDraftResponse) -> D
 
 
 async def generate_draft(req: DocumentDraftRequest) -> DocumentDraftResponse:
+    # 리스크 게이트. LLM 을 부르기 전에 DB 의 규칙표로 막는다.
+    # 이 분기를 LLM 안쪽으로 옮기면 안 된다 — 모델이 매번 같게 답하지 않는다.
+    hit = await blocked_reason(req.answers)
+    if hit is not None:
+        return DocumentDraftResponse(
+            application=guidance_text(hit[2]),
+            incident="",
+            evidence_index="",
+            citations=[],
+            generated_by="template",
+            blocked=True,
+        )
     base = fill_templates(req)
     if not configured():
         return base

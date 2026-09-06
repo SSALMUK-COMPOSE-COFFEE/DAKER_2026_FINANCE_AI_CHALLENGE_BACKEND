@@ -12,6 +12,7 @@ from app.schemas import (
     DocumentRewriteResponse,
 )
 from app.services.documents import generate_draft, rewrite
+from app.services.riskgate import blocked_reason
 from app.services.llm import LLMUnavailable
 from app.services.pdf import build_pdf
 
@@ -25,6 +26,12 @@ async def draft(req: DocumentDraftRequest) -> DocumentDraftResponse:
 
 @router.post("/rewrite", response_model=DocumentRewriteResponse)
 async def rewrite_document(req: DocumentRewriteRequest) -> DocumentRewriteResponse:
+    # 초안이 막힌 유형은 재작성도 막는다. 안 그러면 게이트를 우회하는 경로가 된다.
+    if await blocked_reason(req.answers) is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="이 유형은 소명서를 생성하지 않습니다. 전문가 상담 안내를 확인하세요.",
+        )
     try:
         return await rewrite(req)
     except LLMUnavailable as exc:

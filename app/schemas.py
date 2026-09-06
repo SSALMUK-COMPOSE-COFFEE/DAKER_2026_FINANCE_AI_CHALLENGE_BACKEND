@@ -192,6 +192,9 @@ class DocumentDraftResponse(BaseModel):
     evidence_index: str
     citations: list[Citation]
     generated_by: Literal["llm", "template"]
+    # 위험 유형이라 소명서를 만들지 않은 경우 true. 이때 application 에는
+    # 소명서가 아니라 안내문이 들어간다. 기존 클라이언트는 무시해도 된다.
+    blocked: bool = False
 
 
 class DocumentRewriteRequest(BaseModel):
