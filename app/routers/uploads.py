@@ -1,10 +1,13 @@
+import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.config import get_settings
-from app.schemas import ParsedFile, Transaction, UploadParseResponse
+from app.schemas import ImageExtract, ParsedFile, Transaction, UploadParseResponse
+from app.services.llm import LLMUnavailable, configured
 from app.services.transactions import ParseError, parse_transactions
+from app.services.vision import MIME_BY_SUFFIX, extract_image
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
 
@@ -39,6 +42,14 @@ async def _read_capped(item: UploadFile, limit: int) -> bytes:
     return b"".join(chunks)
 
 
+async def _extract(name: str, body: bytes) -> ImageExtract | None:
+    mime = MIME_BY_SUFFIX.get(Path(name).suffix.lower(), "image/png")
+    try:
+        return await extract_image(name, body, mime)
+    except LLMUnavailable:
+        return None
+
+
 @router.post("/parse", response_model=UploadParseResponse)
 async def parse(files: list[UploadFile] = File(...)) -> UploadParseResponse:
     settings = get_settings()
@@ -47,6 +58,7 @@ async def parse(files: list[UploadFile] = File(...)) -> UploadParseResponse:
 
     parsed: list[ParsedFile] = []
     transactions: list[Transaction] = []
+    images: list[tuple[ParsedFile, bytes]] = []
     total_limit = settings.upload_max_bytes * TOTAL_MAX_FACTOR
     budget = total_limit
 
@@ -71,7 +83,17 @@ async def parse(files: list[UploadFile] = File(...)) -> UploadParseResponse:
                 entry.error = str(exc)
             except Exception:
                 entry.error = "파일을 읽지 못했습니다. 은행 앱에서 내려받은 원본 CSV/XLSX인지 확인해 주세요."
+        elif kind == "image":
+            images.append((entry, body))
         parsed.append(entry)
+
+    if images and configured():
+        results = await asyncio.gather(
+            *(_extract(entry.name, body) for entry, body in images), return_exceptions=True
+        )
+        for (entry, _), result in zip(images, results):
+            if isinstance(result, ImageExtract):
+                entry.extracted = result
 
     transactions.sort(key=lambda t: t.occurred_at)
     return UploadParseResponse(files=parsed, transactions=transactions)

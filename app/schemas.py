@@ -19,6 +19,17 @@ class Transaction(BaseModel):
     kind: TxKind = "unknown"
 
 
+class ImageExtract(BaseModel):
+    file: str
+    category: Literal["chat", "notification", "txhistory", "receipt", "tracking", "police", "other"] = "other"
+    summary: str
+    depositor: str = ""
+    amount: str = ""
+    occurred_at: str = ""
+    counterparty: str = ""
+    quotes: list[str] = Field(default_factory=list)
+
+
 class ParsedFile(BaseModel):
     name: str
     size: int
@@ -26,6 +37,7 @@ class ParsedFile(BaseModel):
     transaction_count: int = 0
     skipped_rows: int = 0
     error: str | None = None
+    extracted: ImageExtract | None = None
 
 
 class UploadParseResponse(BaseModel):
@@ -184,6 +196,7 @@ class DocumentDraftRequest(BaseModel):
     checked_evidence: list[str] = Field(default_factory=list)
     memo: str = Field(default="", max_length=2000)
     applicant: Applicant = Field(default_factory=Applicant)
+    image_notes: list[ImageExtract] = Field(default_factory=list, max_length=20)
 
 
 class DocumentDraftResponse(BaseModel):
@@ -214,10 +227,16 @@ class DocumentExportRequest(BaseModel):
     applicant_name: str = ""
 
 
+class SampleFile(BaseModel):
+    name: str
+    url: str
+
+
 class Persona(BaseModel):
     id: str
     title: str
     summary: str
+    story: str = ""
     expected_basis: list[Fact]
     answers: Answers
     transactions: list[Transaction]

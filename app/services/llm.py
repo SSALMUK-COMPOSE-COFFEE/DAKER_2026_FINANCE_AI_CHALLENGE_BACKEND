@@ -21,7 +21,7 @@ def user_block(label: str, text: str) -> str:
 
 
 async def complete(
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     max_tokens: int = 4096,
     temperature: float = 0.3,
     json_mode: bool = False,
@@ -85,7 +85,7 @@ def parse_json(text: str) -> dict[str, Any]:
     return data
 
 
-async def complete_json(messages: list[dict[str, str]], max_tokens: int = 4096) -> dict[str, Any]:
+async def complete_json(messages: list[dict[str, Any]], max_tokens: int = 4096) -> dict[str, Any]:
     text = await complete(messages, max_tokens=max_tokens, temperature=0.2, json_mode=True)
     return parse_json(text)
 
