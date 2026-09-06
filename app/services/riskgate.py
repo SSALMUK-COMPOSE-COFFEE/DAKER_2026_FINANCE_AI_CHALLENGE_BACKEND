@@ -1,0 +1,116 @@
+"""위험 유형 차단 — DB 의 규칙표를 읽어서 LLM 앞단에서 막는다.
+
+이 판단을 LLM 에 맡기면 안 된다. 같은 입력에 매번 조금씩 다르게 답하기 때문이다.
+도박·토토 환전금으로 계좌가 묶인 사람에게 소명서를 만들어 주면, 그 문서가
+"저 도박했습니다" 라는 자백서가 된다. 돕는 대신 처벌받게 만드는 경로다.
+
+정본은 DB 다.
+    question_options.stop_here = true   → 고르면 즉시 중단인 선택지
+    question_options.warning            → 그때 사용자에게 보여줄 문구
+문안을 고칠 일이 있으면 DB 를 고친다. 이 파일은 건드리지 않아도 된다.
+
+`option_key` 는 이 표의 입력값이다. 화면이 임의로 바꾸면 차단이 조용히 실패한다.
+"""
+
+import logging
+import time
+
+import psycopg
+
+from app.config import get_settings
+from app.schemas import Answers
+
+log = logging.getLogger(__name__)
+
+_SQL = """
+SELECT question_code, option_key, label, warning
+FROM question_options
+WHERE stop_here
+"""
+
+# DB 가 안 뜰 때 쓰는 안전망. 2026-09-02 시드 기준 7건을 그대로 박아 둔다.
+# 정본이 아니다 — DB 에 새 중단 선택지가 생기면 여기엔 없으므로,
+# 이 값으로 돌고 있다는 것은 그 자체로 경보다(로그에 WARNING 이 남는다).
+FALLBACK_STOP: dict[tuple[str, str], str] = {
+    ("q3", "exchange"): "이 경우에는 문서를 자동으로 만들어 드리지 않습니다. 변호사 상담으로 안내해 드리겠습니다.",
+    ("q3", "proxy"): "돈을 직접 옮기신 경우라 방어 방법이 완전히 다릅니다. 문서를 만들어 드리지 않습니다.",
+    ("q6f", "sent"): "돈을 옮기신 상태라 방어 방법이 완전히 다릅니다. 문서를 만들어 드리지 않습니다.",
+    ("q8", "access_medium"): "저희가 도와드릴 수 있는 범위를 벗어납니다. 대한법률구조공단 132로 연락하시기 바랍니다.",
+    ("q8", "gambling"): "사실대로 쓰면 도박 사실을 스스로 밝히게 됩니다. 변호사 상담으로 안내해 드립니다.",
+    ("q8", "fx"): "외국환거래법 위반이 드러날 수 있습니다. 변호사 상담으로 안내해 드립니다.",
+    ("q8", "proxy_withdraw"): "운반책 혐의를 받을 수 있는 상황이라 문서를 만들어 드리지 않습니다.",
+}
+
+# 지금 화면이 보내는 한글 값 → DB 의 (문항, option_key).
+# 화면이 DB 의 option_key 를 그대로 돌려보내게 되면 이 표는 지운다. 그때까지의 다리다.
+LEGACY_ALIASES: dict[tuple[str, str], tuple[str, str]] = {
+    ("q2", "환전대리송금"): ("q3", "exchange"),
+}
+
+_CACHE_TTL_SECONDS = 300.0
+_cache: dict[tuple[str, str], str] | None = None
+_cache_at = 0.0
+
+
+async def _load_stop_options() -> dict[tuple[str, str], str]:
+    """DB 에서 중단 선택지를 읽는다. 실패하면 안전망을 돌려준다."""
+    global _cache, _cache_at
+    now = time.monotonic()
+    if _cache is not None and now - _cache_at < _CACHE_TTL_SECONDS:
+        return _cache
+
+    url = get_settings().database_url
+    if not url:
+        log.warning("riskgate: DATABASE_URL 이 비어 있다. 안전망으로 돈다 — 새 중단 선택지는 반영되지 않는다")
+    else:
+        try:
+            async with await psycopg.AsyncConnection.connect(url, connect_timeout=3) as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(_SQL)
+                    rows = await cur.fetchall()
+            loaded = {(r[0], r[1]): (r[3] or "").strip() for r in rows}
+            if loaded:
+                _cache, _cache_at = loaded, now
+                return loaded
+            log.warning("riskgate: question_options 에 stop_here 행이 없다. 안전망으로 간다")
+        except Exception as exc:  # noqa: BLE001 - 어떤 실패든 안전망으로 내려간다
+            log.warning("riskgate: DB 를 못 읽었다(%s). 안전망으로 간다", exc)
+
+    if _cache is not None:
+        return _cache  # 오래됐어도 아무것도 없는 것보다 낫다
+    return FALLBACK_STOP
+
+
+def _pairs(answers: Answers):
+    """답변을 (문항, 값) 쌍으로 편다. 복수선택도 편다."""
+    for code, value in answers.items():
+        if isinstance(value, str):
+            yield code, value
+        elif isinstance(value, list):
+            for v in value:
+                if isinstance(v, str):
+                    yield code, v
+
+
+async def blocked_reason(answers: Answers) -> tuple[str, str, str] | None:
+    """차단해야 하면 (문항, option_key, 안내문)을, 아니면 None 을 돌려준다."""
+    stop = await _load_stop_options()
+    for code, value in _pairs(answers):
+        key = (code, value)
+        key = LEGACY_ALIASES.get(key, key)
+        if key in stop:
+            return key[0], key[1], stop[key]
+    return None
+
+
+def guidance_text(warning: str) -> str:
+    """DB 의 경고 문구에 공통 안내를 붙여 안내문을 만든다."""
+    return (
+        "[안내] 이 유형은 소명서를 만들어 드릴 수 없습니다\n\n"
+        f"{warning}\n\n"
+        "■ 지금 하셔야 할 일\n\n"
+        "- 가지고 계신 자료를 은행이나 수사기관에 임의로 제출하기 전에,\n"
+        "  반드시 형사 사건 경험이 있는 변호사와 먼저 상담하십시오.\n"
+        "- 대한법률구조공단(132) 에서 무료 상담을 받을 수 있습니다.\n\n"
+        "본 안내는 법률 자문을 대체하지 않습니다."
+    )
