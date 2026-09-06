@@ -25,6 +25,7 @@ ALLOWED: dict[str, list[str]] = {
     "q12": ["있음", "없음"],
 }
 ALLOWED_MULTI: dict[str, list[str]] = {
+    "q8": ["접근매체양도", "도박환전", "환치기", "대리인출송금", "해당없음"],
     "q11": [*BANK_NAMES, "기타"],
     "q13": ["은행전화", "경찰신고", "더치트"],
 }
@@ -52,6 +53,7 @@ JSON 객체 하나만 출력한다. 키와 허용 값:
 - q6: 같음 | 다름  (입금자명이 대화 상대와 같았는지)
 - q7_date: YYYY-MM-DD, q7_time: HH:MM, q7_amount: 실제 입금된 금액 숫자만, q7_depositor: 입금자명
 - q7_dealAmount: 상대와 약속한 거래금액 숫자만, q7_noticeAmount: 은행이 통보한 피해금(공고금액) 숫자만, q7_balance: 정지 당시 계좌잔액 숫자만
+- q8: 배열, 결격 사유. 서술에 명확히 있을 때만 접근매체양도(통장·카드·OTP를 남에게 넘김) | 도박환전 | 환치기 | 대리인출송금 을 넣고, 없으면 생략
 - q9: 계좌 정지 날짜 YYYY-MM-DD
 - q10: 받음 | 안받음 (채권소멸절차 개시 공고 통지), q10_date: YYYY-MM-DD
 - q11: 배열, 정지된 은행. 원소는 카카오뱅크 | 국민은행 | 신한은행 | 우리은행 | 하나은행 | 기타 (목록에 없는 은행은 기타)
@@ -112,6 +114,11 @@ def _sanitize(raw: dict) -> Answers:
     return out
 
 
+def _with_defaults(answers: Answers) -> Answers:
+    answers.setdefault("q8", ["해당없음"])
+    return answers
+
+
 def rules(text: str) -> Answers:
     lowered = text.lower()
     out: Answers = {}
@@ -155,9 +162,9 @@ async def parse_intake(req: IntakeRequest) -> IntakeResponse:
                 ],
                 max_tokens=800,
             )
-            answers = {**rules(text), **_sanitize(data.get("answers") or {})}
+            answers = _with_defaults({**rules(text), **_sanitize(data.get("answers") or {})})
             summary = data.get("summary") if isinstance(data.get("summary"), str) else ""
             return IntakeResponse(answers=answers, summary=summary[:400], generated_by="llm")
         except LLMUnavailable:
             pass
-    return IntakeResponse(answers=rules(text), summary="", generated_by="rules")
+    return IntakeResponse(answers=_with_defaults(rules(text)), summary="", generated_by="rules")
