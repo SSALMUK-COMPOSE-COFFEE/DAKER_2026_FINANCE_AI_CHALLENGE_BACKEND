@@ -44,7 +44,13 @@ FALLBACK_STOP: dict[tuple[str, str], str] = {
 # 지금 화면이 보내는 한글 값 → DB 의 (문항, option_key).
 # 화면이 DB 의 option_key 를 그대로 돌려보내게 되면 이 표는 지운다. 그때까지의 다리다.
 LEGACY_ALIASES: dict[tuple[str, str], tuple[str, str]] = {
+    # q2 — 입금 사유. 도박·토토 환전금을 가리킨다
     ("q2", "환전대리송금"): ("q3", "exchange"),
+    # q8 — 위험 신호 복수선택. 코퍼스의 중단 선택지와 1:1 로 대응한다
+    ("q8", "접근매체양도"): ("q8", "access_medium"),
+    ("q8", "도박환전"): ("q8", "gambling"),
+    ("q8", "환치기"): ("q8", "fx"),
+    ("q8", "대리인출송금"): ("q8", "proxy_withdraw"),
 }
 
 _CACHE_TTL_SECONDS = 300.0
