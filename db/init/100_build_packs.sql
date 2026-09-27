@@ -81,7 +81,10 @@ LEFT JOIN LATERAL (
          || to_char(max(st.effective_on), 'YYYY-MM-DD') || E'\n'
          AS text
   FROM statutes st
-  WHERE st.law_name = '전기통신금융사기 피해 방지 및 피해금 환급에 관한 특별법'
+  -- 법령명을 박지 않는다. 2026-09-08 시행 개정에서 "피해금 환급" 이
+  -- "피해자산 환급" 으로 바뀌었고, 박아 두면 개정 즉시 조문을 못 찾는다.
+  WHERE st.law_name LIKE '전기통신금융사기%'
+    AND st.law_name NOT LIKE '%시행령'
     AND st.article = CASE WHEN t.out_of_scope THEN '제16조' ELSE '제7조' END
   GROUP BY st.law_name
 ) law ON true
