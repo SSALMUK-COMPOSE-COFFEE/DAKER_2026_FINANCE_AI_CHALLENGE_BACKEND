@@ -29,8 +29,7 @@ ATTACHMENTS = (
     "3. 명의인 본인서명사실확인서 1부 (주민센터 발급)",
 )
 REASON_TITLE = "이의제기 사유 (구체적으로 기재합니다)"
-REASON_CONTINUED = "이의제기 사유 (별지 계속)"
-CONTINUE_MARK = "…… (별지에 계속)"
+REASON_CONTINUED = "이의제기 사유 (앞 쪽에서 계속)"
 
 LEFT = 15.0
 FORM_W = 180.0
@@ -43,6 +42,7 @@ REASON_PAD = 2.0
 MIN_REASON_MM = 62.0
 FORM_TAIL_MM = 68.0
 PAGE_BOTTOM = 297.0 - 18.0
+PAGE_TOP = 18.0
 
 REASON_HEADER = re.compile(r"^\s*■?\s*이의제기\s*사유.*$", re.MULTILINE)
 TRAILER_LINE = re.compile(
@@ -114,7 +114,17 @@ def _group(pdf: FPDF, y: float, label: str, rows: list[list[tuple[str, str, floa
     return y + h
 
 
-def _form_page(pdf: FPDF, reason: str, ap: Applicant) -> list[str]:
+def _reason_box(pdf: FPDF, y: float, lines: list[str], h: float) -> float:
+    pdf.set_draw_color(*LINE)
+    pdf.set_line_width(0.2)
+    pdf.rect(LEFT, y, FORM_W, h)
+    pdf.set_font("nanum", "", 8.5)
+    pdf.set_xy(LEFT + 3, y + REASON_PAD)
+    pdf.multi_cell(FORM_W - 6, REASON_LH, "\n".join(lines), align="L")
+    return y + h
+
+
+def _form_page(pdf: FPDF, reason: str, ap: Applicant) -> None:
     pdf.set_auto_page_break(auto=False)
     pdf.add_page()
     pdf.set_text_color(20, 20, 20)
@@ -157,24 +167,26 @@ def _form_page(pdf: FPDF, reason: str, ap: Applicant) -> list[str]:
 
     pdf.set_font("nanum", "", 8.5)
     lines = pdf.multi_cell(FORM_W - 6, REASON_LH, reason, dry_run=True, output="LINES")
-    room = PAGE_BOTTOM - FORM_TAIL_MM - y - REASON_PAD * 2
-    max_lines = max(int(room // REASON_LH), 1)
-    rest: list[str] = []
-    if len(lines) > max_lines:
-        rest = lines[max_lines - 1:]
-        lines = lines[:max_lines - 1] + [CONTINUE_MARK]
-
-    h = max(len(lines) * REASON_LH + REASON_PAD * 2, MIN_REASON_MM)
-    pdf.set_draw_color(*LINE)
-    pdf.set_line_width(0.2)
-    pdf.rect(LEFT, y, FORM_W, h)
-    pdf.set_xy(LEFT + 3, y + REASON_PAD)
-    pdf.multi_cell(FORM_W - 6, REASON_LH, "\n".join(lines))
-    y += h
+    first = True
+    while True:
+        with_tail = int((PAGE_BOTTOM - FORM_TAIL_MM - y - REASON_PAD * 2) // REASON_LH)
+        if len(lines) <= with_tail:
+            h = len(lines) * REASON_LH + REASON_PAD * 2
+            y = _reason_box(pdf, y, lines, max(h, MIN_REASON_MM) if first else h)
+            break
+        full = max(int((PAGE_BOTTOM - y - REASON_PAD * 2) // REASON_LH), 1)
+        take = max(min(full, len(lines) - 1), 1)
+        _reason_box(pdf, y, lines[:take], PAGE_BOTTOM - y)
+        lines = lines[take:]
+        first = False
+        pdf.add_page()
+        y = PAGE_TOP
+        _box(pdf, LEFT, y, FORM_W, ROW_H, REASON_CONTINUED, bold=True)
+        y += ROW_H
 
     pdf.set_font("nanum", "", 8.5)
     pdf.set_xy(LEFT + 3, y + 2.5)
-    pdf.multi_cell(FORM_W - 6, REASON_LH, FORM_CLAUSE)
+    pdf.multi_cell(FORM_W - 6, REASON_LH, FORM_CLAUSE, align="L")
     y = pdf.get_y() + 4
 
     pdf.set_font("nanum", "", 9.5)
@@ -202,7 +214,6 @@ def _form_page(pdf: FPDF, reason: str, ap: Applicant) -> list[str]:
     _box(pdf, LEFT + 155, y, 25, ROW_H * 3, "수수료\n없음", bold=True, align="C")
 
     pdf.set_auto_page_break(auto=True, margin=18)
-    return rest
 
 
 def _section_head(pdf: FPDF, title: str, meta: str) -> None:
@@ -223,16 +234,7 @@ def _section_head(pdf: FPDF, title: str, meta: str) -> None:
 def _section_page(pdf: FPDF, title: str, meta: str, body: str) -> None:
     _section_head(pdf, title, meta)
     pdf.set_font("nanum", "", 10)
-    pdf.multi_cell(0, 6, body)
-
-
-def _reason_continued(pdf: FPDF, meta: str, lines: list[str]) -> None:
-    _section_head(pdf, REASON_CONTINUED, meta)
-    pdf.set_left_margin(LEFT + 3)
-    pdf.set_x(LEFT + 3)
-    pdf.set_font("nanum", "", 8.5)
-    pdf.multi_cell(FORM_W - 6, REASON_LH, "\n".join(lines))
-    pdf.set_left_margin(20)
+    pdf.multi_cell(0, 6, body, align="L")
 
 
 def build_pdf(sections: dict[str, str], applicant: Applicant | None = None) -> bytes:
@@ -243,9 +245,7 @@ def build_pdf(sections: dict[str, str], applicant: Applicant | None = None) -> b
 
     reason = reason_only(sections.get("application", "").translate(GLYPH_FALLBACK))
     if reason:
-        rest = _form_page(pdf, reason, ap)
-        if rest:
-            _reason_continued(pdf, meta, rest)
+        _form_page(pdf, reason, ap)
 
     for key, title in SECTIONS:
         body = sections.get(key, "").strip().translate(GLYPH_FALLBACK)
