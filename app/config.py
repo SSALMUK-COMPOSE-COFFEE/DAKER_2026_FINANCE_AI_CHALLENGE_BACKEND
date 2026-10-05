@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://openrouter.ai/api/v1"
     llm_api_key: str = ""
     llm_model: str = "anthropic/claude-sonnet-5"
+    llm_draft_model: str = ""
     llm_timeout_seconds: float = 90.0
 
     embedding_base_url: str = "https://openrouter.ai/api/v1"

@@ -361,6 +361,7 @@ async def _generate(req: DocumentDraftRequest, base: DocumentDraftResponse) -> D
     data = await complete_json(
         [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}],
         max_tokens=12000,
+        draft=True,
     )
     parts = {k: data.get(k) for k in ("application", "incident", "evidence_index")}
     if not all(isinstance(v, str) and v.strip() for v in parts.values()):
@@ -408,6 +409,7 @@ async def rewrite(req: DocumentRewriteRequest) -> DocumentRewriteResponse:
             },
         ],
         max_tokens=12000,
+        draft=True,
         temperature=0.3,
     )
     content = content.strip()

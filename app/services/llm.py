@@ -25,17 +25,19 @@ async def complete(
     max_tokens: int = 4096,
     temperature: float = 0.3,
     json_mode: bool = False,
+    draft: bool = False,
 ) -> str:
     settings = get_settings()
     if not settings.llm_api_key:
         raise LLMUnavailable("llm_api_key is not configured")
 
-    payload: dict[str, Any] = {
-        "model": settings.llm_model,
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-    }
+    model = (settings.llm_draft_model if draft else "") or settings.llm_model
+    payload: dict[str, Any] = {"model": model, "messages": messages}
+    if "api.openai.com" in settings.llm_base_url:
+        payload["max_completion_tokens"] = max_tokens
+    else:
+        payload["max_tokens"] = max_tokens
+        payload["temperature"] = temperature
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
     try:
@@ -85,8 +87,8 @@ def parse_json(text: str) -> dict[str, Any]:
     return data
 
 
-async def complete_json(messages: list[dict[str, Any]], max_tokens: int = 4096) -> dict[str, Any]:
-    text = await complete(messages, max_tokens=max_tokens, temperature=0.2, json_mode=True)
+async def complete_json(messages: list[dict[str, Any]], max_tokens: int = 4096, draft: bool = False) -> dict[str, Any]:
+    text = await complete(messages, max_tokens=max_tokens, temperature=0.2, json_mode=True, draft=draft)
     return parse_json(text)
 
 
