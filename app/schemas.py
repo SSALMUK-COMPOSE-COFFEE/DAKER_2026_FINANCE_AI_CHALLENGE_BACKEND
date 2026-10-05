@@ -195,6 +195,7 @@ class DocumentDraftRequest(BaseModel):
     analysis: AnalysisResponse | None = None
     checked_evidence: list[str] = Field(default_factory=list)
     memo: str = Field(default="", max_length=2000)
+    story: str = Field(default="", max_length=4000)
     applicant: Applicant = Field(default_factory=Applicant)
     image_notes: list[ImageExtract] = Field(default_factory=list, max_length=20)
 
