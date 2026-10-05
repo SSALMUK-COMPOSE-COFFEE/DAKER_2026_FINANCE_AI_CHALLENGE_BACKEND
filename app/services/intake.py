@@ -36,7 +36,6 @@ FREE_KEYS = (
     "q7_depositor",
     "q7_dealAmount",
     "q7_noticeAmount",
-    "q7_balance",
     "q9",
     "q10_date",
 )
@@ -52,7 +51,7 @@ JSON 객체 하나만 출력한다. 키와 허용 값:
 - q5: 같음 | 더받음 | 덜받음
 - q6: 같음 | 다름  (입금자명이 대화 상대와 같았는지)
 - q7_date: YYYY-MM-DD, q7_time: HH:MM, q7_amount: 실제 입금된 금액 숫자만, q7_depositor: 입금자명
-- q7_dealAmount: 상대와 약속한 거래금액 숫자만, q7_noticeAmount: 은행이 통보한 피해금(공고금액) 숫자만, q7_balance: 정지 당시 계좌잔액 숫자만
+- q7_dealAmount: 상대와 약속한 거래금액 숫자만, q7_noticeAmount: 은행이 통보한 피해 신고된 금액 숫자만
 - q8: 배열, 결격 사유. 서술에 명확히 있을 때만 접근매체양도(통장·카드·OTP를 남에게 넘김) | 도박환전 | 환치기 | 대리인출송금 을 넣고, 없으면 생략
 - q9: 계좌 정지 날짜 YYYY-MM-DD
 - q10: 받음 | 안받음 (채권소멸절차 개시 공고 통지), q10_date: YYYY-MM-DD
@@ -103,7 +102,7 @@ def _sanitize(raw: dict) -> Answers:
         value = raw.get(key)
         if isinstance(value, (str, int)) and str(value).strip():
             text = str(value).strip()
-            if key.lower().endswith(("amount", "balance")):
+            if key.lower().endswith("amount"):
                 text = re.sub(r"[^0-9]", "", text)
                 if not text:
                     continue
@@ -112,6 +111,25 @@ def _sanitize(raw: dict) -> Answers:
                     continue
             out[key] = text[:100]
     return out
+
+
+def _nearest_past_year(text: str, answers: Answers) -> Answers:
+    if re.search(r"20\d{2}", text):
+        return answers
+    today = date.today()
+    for key in ("q7_date", "q9", "q10_date"):
+        value = answers.get(key)
+        if not isinstance(value, str):
+            continue
+        try:
+            parsed = date.fromisoformat(value)
+            fixed = parsed.replace(year=today.year)
+        except ValueError:
+            continue
+        if fixed > today:
+            fixed = fixed.replace(year=today.year - 1)
+        answers[key] = fixed.isoformat()
+    return answers
 
 
 def _with_defaults(answers: Answers) -> Answers:
@@ -160,9 +178,9 @@ async def parse_intake(req: IntakeRequest) -> IntakeResponse:
                     {"role": "system", "content": f"{SYSTEM_PROMPT}\n오늘은 {date.today().isoformat()}이다."},
                     {"role": "user", "content": user_block("user_text", text)},
                 ],
-                max_tokens=800,
+                max_tokens=4000,
             )
-            answers = _with_defaults({**rules(text), **_sanitize(data.get("answers") or {})})
+            answers = _with_defaults(_nearest_past_year(text, {**rules(text), **_sanitize(data.get("answers") or {})}))
             summary = data.get("summary") if isinstance(data.get("summary"), str) else ""
             return IntakeResponse(answers=answers, summary=summary[:400], generated_by="llm")
         except LLMUnavailable:

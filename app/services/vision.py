@@ -39,7 +39,7 @@ async def extract_image(name: str, data: bytes, mime: str) -> ImageExtract:
             ],
         },
     ]
-    result = await complete_json(messages, max_tokens=800)
+    result = await complete_json(messages, max_tokens=4000)
     summary = _str(result.get("summary"))
     if not summary:
         raise LLMUnavailable("image extract missing summary")
